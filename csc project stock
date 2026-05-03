@@ -1,0 +1,168 @@
+import mysql.connector
+
+def get_connection():
+    try:
+        return mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="yourpassword",
+            database="stock_db"
+        )
+    except mysql.connector.Error:
+        return None
+
+def init_db():
+    conn = get_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS stocks (
+                company VARCHAR(50) PRIMARY KEY,
+                price INT,
+                volume INT
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+def save_stocks(stocks):
+    with open("stocks.txt", "w") as f:
+        for c, p, v in stocks:
+            f.write(f"{c},{p},{v}\n")
+    conn = get_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM stocks")
+        for c, p, v in stocks:
+            cur.execute("INSERT INTO stocks (company, price, volume) VALUES (%s, %s, %s)", (c, p, v))
+        conn.commit()
+        conn.close()
+
+def load_stocks():
+    conn = get_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("SELECT company, price, volume FROM stocks")
+        rows = cur.fetchall()
+        conn.close()
+        if rows:
+            return [[r[0], str(r[1]), str(r[2])] for r in rows]
+    try:
+        with open("stocks.txt") as f:
+            return [line.strip().split(",") for line in f]
+    except FileNotFoundError:
+        return []
+
+def trend(price, volume):
+    price = int(price)
+    volume = int(volume)
+    if price > 500 and volume > 1000:
+        return "BUY"
+    elif price < 200 or volume < 500:
+        return "SELL"
+    else:
+        return "HOLD"
+
+updates = []
+
+def update_price(stocks, company, new_price):
+    found = False
+    for s in stocks:
+        if s[0].lower() == company.lower():
+            s[1] = str(new_price)
+            updates.append((s[0], new_price))
+            if len(updates) > 3:
+                updates.pop(0)
+            found = True
+            break
+    if found:
+        save_stocks(stocks)
+        print(f"Price of {company} updated successfully.")
+    else:
+        print(f"Company {company} not found.")
+
+def add_stock(stocks, company, price, volume):
+    stocks.append([company.title(), str(price), str(volume)])
+    save_stocks(stocks)
+    print(f"Stock {company.title()} added successfully.")
+
+def delete_stock(stocks, company):
+    for s in stocks:
+        if s[0].lower() == company.lower():
+            stocks.remove(s)
+            save_stocks(stocks)
+            print(f"Stock {s[0]} deleted successfully.")
+            return
+    print(f"Company {company} not found.")
+
+def view_stocks(stocks):
+    if not stocks:
+        print("No stocks available.")
+        return
+    print(f"{'Company':<10} {'Price':<10} {'Volume':<10} {'Trend':<5}")
+    print("-" * 40)
+    for stock in stocks:
+        print(f"{stock[0]:<10} {stock[1]:<10} {stock[2]:<10} {trend(stock[1], stock[2]):<5}")
+    if updates:
+        print("\nRecent Updates (last 3):")
+        for u in updates:
+            print(f"Company: {u[0]}, New Price: {u[1]}")
+
+def search_stock(stocks, company):
+    for s in stocks:
+        if s[0].lower() == company.lower():
+            print(f"Company: {s[0]}, Price: {s[1]}, Volume: {s[2]}, Trend: {trend(s[1], s[2])}")
+            return
+    print(f"Company {company} not found.")
+
+def get_number(prompt):
+    while True:
+        value = input(prompt)
+        if value.isdigit():
+            return int(value)
+        print("Please enter a valid number.")
+
+if __name__ == "__main__":
+    init_db()
+    stocks = load_stocks()
+    if not stocks:
+        stocks = [
+            ["TCS", "600", "1200"],
+            ["INFY", "150", "400"],
+            ["WIPRO", "300", "800"]
+        ]
+        save_stocks(stocks)
+
+    while True:
+        print("\n--- Stock Market Analyzer Menu ---")
+        print("1. View Stocks")
+        print("2. Add Stock")
+        print("3. Update Stock Price")
+        print("4. Delete Stock")
+        print("5. Search Stock")
+        print("6. Exit")
+        choice = input("Enter your choice (1-6): ")
+
+        if choice == "1":
+            stocks = load_stocks()
+            view_stocks(stocks)
+        elif choice == "2":
+            company = input("Enter company name: ")
+            price = get_number("Enter price: ")
+            volume = get_number("Enter volume: ")
+            add_stock(stocks, company, price, volume)
+        elif choice == "3":
+            company = input("Enter company name to update: ")
+            new_price = get_number("Enter new price: ")
+            update_price(stocks, company, new_price)
+        elif choice == "4":
+            company = input("Enter company name to delete: ")
+            delete_stock(stocks, company)
+        elif choice == "5":
+            company = input("Enter company name to search: ")
+            search_stock(stocks, company)
+        elif choice == "6":
+            print("Exiting program...")
+            break
+        else:
+            print("Invalid choice. Please enter 1-6.")
